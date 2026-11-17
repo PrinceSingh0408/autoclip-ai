@@ -1,0 +1,63 @@
+name: Phase 0 Feasibility
+
+on:
+  workflow_dispatch:
+    inputs:
+      whisper_model:
+        description: "Speech model size (tiny is fastest, base is more accurate)"
+        required: true
+        default: "base"
+        type: choice
+        options: [tiny, base, small]
+      youtube_url:
+        description: "OPTIONAL: your OWN livestream URL (or one you have permission for). Leave empty to skip."
+        required: false
+        default: ""
+
+jobs:
+  pipeline-test:
+    name: Test A - live pipeline (no YouTube)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ffmpeg and a speech synthesizer
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
+      - name: Install faster-whisper
+        run: pip install faster-whisper
+      - name: Run pipeline test
+        run: python worker/feasibility/pipeline_test.py --model "${{ inputs.whisper_model }}" --out output
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-test-output
+          path: output/
+
+  youtube-probe:
+    name: Test B - YouTube reachability
+    if: ${{ inputs.youtube_url != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ffmpeg and yt-dlp
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          pip install -U "yt-dlp[default]"
+      - name: Run probe
+        env:
+          YT_URL: ${{ inputs.youtube_url }}
+        run: bash worker/feasibility/youtube_probe.sh output
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-probe-output
+          path: output/youtube_probe.txt
